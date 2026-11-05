@@ -21,11 +21,10 @@ I came up with the concept, directed the design and product decisions, and built
 - **AI auto-fill.** Adding a piece should take seconds. You upload a photo, drag and zoom to frame it, and tap Auto-fill. Claude looks at the photo and writes the name, category, color and a one-line description, and you can edit anything before saving. It only runs when you ask, so the form never fills itself in unexpectedly.
 - **Frontend.** One HTML file with plain JavaScript and CSS and no framework. It has a masonry grid, filters for size, color, print and metallic, a wishlist, a drag-to-crop photo tool and a profile that remembers your sizes.
 - **Backend.** A small Node.js server with a built-in SQLite database, photo uploads and an API that calls Claude for labeling. It needs no npm packages, so it runs anywhere Node 22 does.
-- **Two ways to run.** With the server, everything saves to the database. Without it, as on GitHub Pages, the app switches to a demo mode that saves in your browser.
+- **Database and accounts.** On the live site, Supabase handles sign-in, a Postgres database with row-level security, and photo storage. Run locally, a Node server saves to SQLite instead, and without either the app falls back to a demo that saves in your browser.
 
 ### What I'd build next
 
-- Sign-in, so each friend has their own closet instead of sample ones
 - Notifications when a friend asks to borrow something or a piece comes home
 - Outfit suggestions that mix pieces from your closet and your friends' closets
 
@@ -55,12 +54,15 @@ I came up with the concept, directed the design and product decisions, and built
 closet-swap/
 ├── public/            Frontend (one HTML file: markup, styles and JavaScript)
 │   ├── index.html
+│   ├── config.js      Supabase URL and anon key (empty = demo mode)
 │   └── img/           Closet photos
 ├── server/            Backend (Node.js, no npm packages)
 │   ├── server.js      Web server and JSON API
 │   ├── db.js          SQLite database
 │   ├── ai.js          AI auto-fill using the Claude API
 │   └── env.js         Reads settings from .env
+├── supabase/
+│   └── schema.sql     Tables, security rules and photo storage for Supabase
 ├── uploads/           Photos you add (created automatically, not committed)
 ├── data/              The database file (created automatically, not committed)
 ├── .env.example       Settings template
@@ -95,6 +97,18 @@ Pieces you add, swaps, your profile and your wishlist are saved in `data/closet.
 | DELETE | `/api/:collection/:id` | Deletes a record |
 | POST | `/api/upload` | Saves a photo (`{ "dataUrl": "data:image/jpeg;base64,…" }`) and returns its URL |
 | POST | `/api/label` | Sends a photo to Claude and returns name, category, color and description |
+
+## Online database and sign-in (Supabase)
+
+The live site can use [Supabase](https://supabase.com) for accounts, the database and photo storage, with no server needed. Signed in, your pieces, swaps, profile and wishlist save online, and anyone else who signs up shows up in your Friends' Closets. Signed out, visitors see the demo closet.
+
+1. Create a free Supabase project.
+2. Open **SQL Editor → New query**, paste in [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. This creates the tables, the security rules and the `closet-photos` storage bucket.
+3. Go to **Authentication → URL Configuration** and set **Site URL** to your live site, for example `https://avasimoneaa.github.io/closet-swap/public/`.
+4. Copy the **Project URL** and **anon public** key from **Project Settings → API** into [`public/config.js`](public/config.js).
+5. Sign up on the live site. To load the starter closet into your account, visit `#import-starter` once (for example `…/closet-swap/public/#import-starter`).
+
+The anon key is meant to be public. The security rules keep closets visible only to signed-in people and let each person change only their own pieces, profile and wishlist. Never put the `service_role` key in this repo.
 
 ## Demo mode (GitHub Pages)
 

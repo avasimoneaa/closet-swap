@@ -366,6 +366,17 @@ main{padding-block:28px 80px}
 .size-opts input:checked + label{background:var(--wine);border-color:var(--wine);color:var(--wine-ink)}
 .size-opts input:focus-visible + label{outline:2px solid var(--wine);outline-offset:2px}
 .profile-form{display:grid;gap:30px}
+.signin-link{flex:none;padding:8px 16px}
+.demo-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 18px;border-radius:14px;background:var(--blush-2);font-size:14px;color:var(--ink-2)}
+.demo-bar b{color:var(--ink);font-weight:500}
+.auth{max-width:440px;margin:40px auto 0;display:grid;gap:22px}
+.auth h1{font-size:clamp(40px,6vw,60px);line-height:1}
+.auth h1 em{color:var(--wine)}
+.auth .switch-mode{border:0;background:none;color:var(--wine);font-weight:500;cursor:pointer;padding:0;font-size:14.5px}
+.auth-msg{background:var(--blush-2);border-radius:12px;padding:12px 14px;font-size:14px}
+.invite{display:grid;gap:14px;justify-items:start;padding:36px;border-radius:20px;background:var(--blush-2);margin-top:24px}
+.invite h3{font-size:30px}
+.invite code{font-size:14px;background:var(--card);padding:8px 12px;border-radius:10px;border:1px solid var(--line);word-break:break-all}
 .height-row{display:flex;gap:12px;max-width:320px}
 .height-row .field{flex:1}
 /* ---------- Toast / footer ---------- */
@@ -398,17 +409,18 @@ footer .brand{font-size:22px}
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="config.js"></script>
 <script>
 /* ============ Data ============ */
-const ME = { id:"me", name:"Ava", initials:"A" };
+let ME = { id:"me", name:"Ava", initials:"A" };
 
-const FRIENDS = [
+let FRIENDS = [
   { id:"maya",   name:"Maya Chen",   first:"Maya",   initials:"MC", note:"Satin, gingham, anything vintage" },
   { id:"sofia",  name:"Sofia Reyes", first:"Sofia",  initials:"SR", note:"Tailoring and red everything" },
   { id:"lila",   name:"Lila Park",   first:"Lila",   initials:"LP", note:"Little black dresses, mostly" },
   { id:"jordan", name:"Jordan Ellis",first:"Jordan", initials:"JE", note:"Leather bags and easy linen" }
 ];
-const friend = id => FRIENDS.find(f => f.id === id);
+const friend = id => FRIENDS.find(f => f.id === id) || { id, name:"A friend", first:"A friend", initials:"?", note:"" };
 
 // Ava's real closet (photographed pieces)
 const MY_ITEMS = [
@@ -559,18 +571,81 @@ async function connect(){
   render();
 }
 
+/* ============ Supabase: sign-in and online database ============ */
+// Turned on by filling in config.js. Signed out, the app shows the demo closet.
+const CFG = window.CLOSET_SWAP_CONFIG || {};
+const SITE = new URL(".", document.baseURI).href;
+let sb = null, cloud = false;
+state.cloud = { items:[], requests:[] };
+const loadScript = src => new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); });
+const nameBits = n => { const parts = String(n || "Friend").trim().split(/\s+/); return { first:parts[0], initials:(parts[0][0] + (parts[1]?.[0] || "")).toUpperCase() }; };
+async function initCloud(){
+  if (!CFG.supabaseUrl || !CFG.supabaseAnonKey) return;
+  try { await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"); }
+  catch(e){ toast("Couldn’t reach the sign-in service. Showing the demo closet."); return; }
+  sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
+  state.cloudReady = true;
+  const { data } = await sb.auth.getSession();
+  await useSession(data.session);
+  sb.auth.onAuthStateChange((event, session) => {
+    const id = session?.user?.id || null;
+    if (event === "SIGNED_OUT" && cloud) { location.hash = "#home"; location.reload(); }
+    else if (id && id !== (cloud ? ME.id : null)) useSession(session);
+  });
+  window.addEventListener("focus", () => { if (cloud) loadCloud().then(render); });
+}
+async function useSession(session){
+  if (!session){ render(); return; }
+  cloud = true; ME = { id:session.user.id, name:"", initials:"" };
+  await loadCloud();
+  if (route() === "signin") location.hash = "#closet"; else render();
+}
+const fromRow = r => ({ id:r.id, owner: r.owner === ME.id ? "me" : r.owner, ownerId:r.owner, name:r.name, description:r.description || "",
+  category:r.category, color:r.color || "", colorHex:r.color_hex || "", size:r.size || "", img:r.img_url, available:r.available, createdAt:r.created_at });
+const toRow = it => ({ name:it.name, description:it.description || "", category:it.category, color:it.color || "", color_hex:it.colorHex || "",
+  size:it.size || "", img_url:it.img || "", available:it.available !== false });
+async function loadCloud(){
+  const [p, it, rq, wl] = await Promise.all([
+    sb.from("profiles").select("*"),
+    sb.from("items").select("*").eq("removed", false).order("created_at", { ascending:false }),
+    sb.from("requests").select("*").order("created_at", { ascending:false }),
+    sb.from("wishlist").select("item_id"),
+  ]);
+  const bad = [p, it, rq, wl].find(r => r.error);
+  if (bad){ console.error(bad.error); toast("Couldn’t load your closet. Check your connection and refresh."); return; }
+  const mine = p.data.find(x => x.id === ME.id) || {};
+  ME = { id:ME.id, name:mine.name || "You", initials:nameBits(mine.name).initials };
+  state.profile = mine.sizes || {};
+  FRIENDS = p.data.filter(x => x.id !== ME.id).map(x => ({ id:x.id, name:x.name || "Friend", note:"", ...nameBits(x.name) }));
+  state.cloud.items = it.data.map(fromRow);
+  state.cloud.requests = rq.data;
+  state.saved = new Set(wl.data.map(r => r.item_id));
+}
+// Runs one Supabase write, then reloads so every page shows the latest data.
+async function cloudDo(q, failMsg = "Couldn’t save that. Check your connection and try again."){
+  const { error } = await q;
+  if (error){ console.error(error); toast(failMsg); return false; }
+  await loadCloud(); render(); return true;
+}
+
 /* ============ Helpers ============ */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-const allMine = () => [...MY_ITEMS, ...state.added].map(i => {
+const allMine = () => (cloud ? state.cloud.items.filter(i => i.owner === "me") : [...MY_ITEMS, ...state.added]).map(i => {
   const p = state.prefs[i.id] || {};
   const it = { ...i, ...p, owner:"me", available: p.available ?? i.available };
   if (!it.size) it.size = sizeFor(it.category, state.profile) || (it.category==="Accessories" ? "One size" : "");
   return it;
 }).filter(i => !i.removed);
-const allItems = () => [...allMine(), ...FRIEND_ITEMS];
+const friendItems = () => cloud ? state.cloud.items.filter(i => i.owner !== "me" && i.available) : FRIEND_ITEMS;
+const allItems = () => [...allMine(), ...(cloud ? state.cloud.items.filter(i => i.owner !== "me") : FRIEND_ITEMS)];
 const itemById = id => allItems().find(i => i.id === id);
 const exchanges = () => {
+  if (cloud) return state.cloud.requests.map(r => {
+    const borrow = r.borrower === ME.id;
+    return { id:r.id, type: borrow ? "borrow" : "lend", itemId:r.item_id, other: borrow ? r.owner : r.borrower, start:r.start_date, note:r.note,
+      status: !borrow && r.status === "requested" ? "pending" : r.status };
+  });
   const seed = SEED_EX.map(x => ({ ...x, ...(state.overrides[x.id]||{}) }));
   const mine = state.requests.map(r => ({ ...r, type:"borrow" }));
   return [...seed, ...mine];
@@ -602,8 +677,13 @@ const ICON = {
 /* ============ Wishlist ============ */
 async function toggleSave(id){
   const it = itemById(id), adding = !state.saved.has(id);
-  adding ? state.saved.add(id) : state.saved.delete(id);
-  await store.setDoc("wishlist", "me", { ids:[...state.saved] });
+  if (cloud){
+    const ok = await cloudDo(adding ? sb.from("wishlist").insert({ item_id:id }) : sb.from("wishlist").delete().eq("item_id", id).eq("user_id", ME.id));
+    if (!ok) return;
+  } else {
+    adding ? state.saved.add(id) : state.saved.delete(id);
+    await store.setDoc("wishlist", "me", { ids:[...state.saved] });
+  }
   render();
   const mb = $("#modalSave"); if (mb) setSaveBtn(mb, id);
   toast(adding ? `Saved to your wishlist` : `Removed from your wishlist`);
@@ -686,7 +766,15 @@ function renderTabs(route){
   const waiting = exchanges().filter(x => x.type==="lend" && x.status==="pending").length;
   const tabs = [["home","Home",ICON.home],["friends","Friends’ Closets",ICON.friends],["closet","My Closet",ICON.closet],["swaps","Swaps",ICON.swaps]];
   const wl = $("#wishLink"); if (wl){ wl.innerHTML = ICON.heart + (state.saved.size ? `<span class="badge num">${state.saved.size}</span>` : ""); route==="wishlist" ? wl.setAttribute("aria-current","page") : wl.removeAttribute("aria-current"); }
-  const ml = $("#meLink"); if (ml) route==="profile" ? ml.setAttribute("aria-current","page") : ml.removeAttribute("aria-current");
+  const ml = $("#meLink");
+  if (ml){
+    const signedOut = state.cloudReady && !cloud;
+    ml.href = signedOut ? "#signin" : "#profile";
+    ml.className = signedOut ? "btn btn-ghost btn-sm signin-link" : "me-link";
+    ml.setAttribute("aria-label", signedOut ? "Sign in" : "Your profile");
+    ml.innerHTML = signedOut ? "Sign in" : `<span class="mono me">${esc(ME.initials || "A")}</span>`;
+  }
+  if (ml) route==="profile" ? ml.setAttribute("aria-current","page") : ml.removeAttribute("aria-current");
   $("#tabs").innerHTML = tabs.map(([id,label,ic]) =>
     `<a class="tab" href="#${id}" ${route===id?'aria-current="page"':""}>${ic}<span>${label}</span>${id==="swaps"&&waiting?`<span class="badge num">${waiting}</span>`:""}</a>`).join("");
 }
@@ -698,7 +786,7 @@ function viewHome(){
   const lending = ex.filter(x => x.type==="lend" && x.status==="active");
   const waiting = ex.filter(x => x.type==="lend" && x.status==="pending");
   const mine = allMine();
-  const fresh = FRIEND_ITEMS.filter((_,i)=>[0,4,7,9,2,10].includes(i));
+  const fresh = cloud ? friendItems().slice(0, 6) : FRIEND_ITEMS.filter((_,i)=>[0,4,7,9,2,10].includes(i));
   const dueSoon = [...borrowing, ...lending].sort((a,b)=>a.start.localeCompare(b.start));
   const pics = [...["m3","m1","m2"].map(id=>mine.find(i=>i.id===id)), ...mine].filter((i,ix,arr)=>i && i.img && arr.indexOf(i)===ix);
   return `<section class="view">
@@ -725,7 +813,7 @@ function viewHome(){
     </div>
 
     <div class="sec">
-      <div class="sec-head"><div><div class="eyebrow">This week</div><h2>New in your friends’ <em>closets</em></h2></div><a class="link" href="#friends">See all ${FRIEND_ITEMS.length} pieces</a></div>
+      <div class="sec-head"><div><div class="eyebrow">This week</div><h2>New in your friends’ <em>closets</em></h2></div><a class="link" href="#friends">See all ${friendItems().length} pieces</a></div>
       <div class="masonry">${fresh.map(pin).join("")}</div>
     </div>
 
@@ -747,7 +835,7 @@ function viewHome(){
 
 function viewFriends(){
   const q = state.query.trim().toLowerCase();
-  let items = FRIEND_ITEMS.filter(i => (!state.friendFilter || i.owner===state.friendFilter) && (state.catFilter==="All" || i.category===state.catFilter));
+  let items = friendItems().filter(i => (!state.friendFilter || i.owner===state.friendFilter) && (state.catFilter==="All" || i.category===state.catFilter));
   if (q) items = items.filter(i => [i.name,i.color,i.category,i.description,friend(i.owner).name].join(" ").toLowerCase().includes(q));
   const base = items; items = refine(items);
   const f = state.friendFilter && friend(state.friendFilter);
@@ -758,13 +846,14 @@ function viewFriends(){
       <label class="search" for="q">${ICON.search}<input id="q" type="search" placeholder="Search satin, red, jacket…" value="${esc(state.query)}" autocomplete="off"></label>
     </div>
     <div class="friends" role="group" aria-label="Filter by friend">
-      <button class="friend" data-friend="" aria-pressed="${!state.friendFilter}"><span class="mono">All</span><div><b>Everyone</b><span>${FRIEND_ITEMS.length} pieces</span></div></button>
-      ${FRIENDS.map(fr=>`<button class="friend" data-friend="${fr.id}" aria-pressed="${state.friendFilter===fr.id}"><span class="mono">${fr.initials}</span><div><b>${fr.name}</b><span>${FRIEND_ITEMS.filter(i=>i.owner===fr.id).length} pieces</span></div></button>`).join("")}
+      <button class="friend" data-friend="" aria-pressed="${!state.friendFilter}"><span class="mono">All</span><div><b>Everyone</b><span>${friendItems().length} pieces</span></div></button>
+      ${FRIENDS.map(fr=>`<button class="friend" data-friend="${fr.id}" aria-pressed="${state.friendFilter===fr.id}"><span class="mono">${fr.initials}</span><div><b>${fr.name}</b><span>${friendItems().filter(i=>i.owner===fr.id).length} pieces</span></div></button>`).join("")}
     </div>
-    <div class="chips" role="group" aria-label="Filter by category">${CATS.filter(c=>c==="All"||FRIEND_ITEMS.some(i=>i.category===c)).map(c=>`<button class="chip" data-cat="${c}" aria-pressed="${state.catFilter===c}">${c}</button>`).join("")}</div>
+    <div class="chips" role="group" aria-label="Filter by category">${CATS.filter(c=>c==="All"||friendItems().some(i=>i.category===c)).map(c=>`<button class="chip" data-cat="${c}" aria-pressed="${state.catFilter===c}">${c}</button>`).join("")}</div>
     ${refineBar(base, items.length)}
-    ${items.length ? `<div class="masonry">${items.map(pin).join("")}</div>` : `<div class="empty">No pieces match that yet. Try another search or friend.</div>`}
-    <p class="note">Sample closets are shown for your friends until they add their own photos.</p>
+    ${cloud && !FRIENDS.length ? `<div class="invite"><h3>Invite your <em style="color:var(--wine)">friends</em></h3><p class="muted" style="margin:0;max-width:46ch">Your circle is empty for now. Send friends this link. Once they make an account and add pieces, their closets show up here.</p><code>${esc(SITE)}</code><button class="btn btn-primary btn-sm" data-copy="${esc(SITE)}">Copy link</button></div>`
+      : items.length ? `<div class="masonry">${items.map(pin).join("")}</div>` : `<div class="empty">No pieces match that yet. Try another search or friend.</div>`}
+    ${cloud ? "" : `<p class="note">Sample closets are shown for your friends until they add their own photos.</p>`}
   </section>`;
 }
 
@@ -872,6 +961,33 @@ function viewWishlist(){
   </section>`;
 }
 
+function viewSignin(){
+  if (!state.cloudReady) return `<section class="view auth"><h1>Sign-in isn’t <em>set up</em></h1><p class="muted">Add your Supabase details to config.js to turn on accounts.</p></section>`;
+  const up = state.authMode === "signup";
+  return `<section class="view auth">
+    <div><div class="eyebrow">${up ? "New here" : "Welcome back"}</div><h1 style="margin-top:12px">${up ? "Start your <em>closet</em>" : "Sign <em>in</em>"}</h1></div>
+    <p class="muted" style="margin:0">${up ? "Make an account to add your pieces and borrow from friends." : "Sign in to see your closet and your friends’ closets."}</p>
+    ${state.authMsg ? `<div class="auth-msg">${esc(state.authMsg)}</div>` : ""}
+    <form class="form" id="authForm">
+      ${up ? `<div class="field"><label for="a-name">Your name</label><input id="a-name" autocomplete="name" required placeholder="Ava Aguilar"></div>` : ""}
+      <div class="field"><label for="a-email">Email</label><input id="a-email" type="email" autocomplete="email" required value="${esc(state.authEmail || "")}"></div>
+      <div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" autocomplete="${up ? "new-password" : "current-password"}" minlength="6" required></div>
+      <div><button class="btn btn-primary" type="submit" id="authBtn">${up ? "Create account" : "Sign in"}</button></div>
+    </form>
+    <p class="muted" style="margin:0;font-size:14.5px">${up ? "Already have an account?" : "New to Closet Swap?"} <button type="button" class="switch-mode" data-authmode="${up ? "signin" : "signup"}">${up ? "Sign in" : "Create an account"}</button></p>
+  </section>`;
+}
+function viewImport(){
+  if (!cloud) return `<section class="view auth"><h1>Sign in <em>first</em></h1><p class="muted">Sign in, then come back to this page to bring in the starter closet.</p><div><a class="btn btn-primary" href="#signin">Sign in</a></div></section>`;
+  const have = new Set(allMine().map(i => i.name));
+  const left = MY_ITEMS.filter(i => !have.has(i.name));
+  return `<section class="view auth">
+    <div><div class="eyebrow">One-time setup</div><h1 style="margin-top:12px">Bring in your <em>starter closet</em></h1></div>
+    <p class="muted" style="margin:0">${left.length ? `Adds ${left.length} photographed pieces to your closet in the online database. You can edit or remove any of them after.` : "All the starter pieces are already in your closet."}</p>
+    <div>${left.length ? `<button class="btn btn-primary" data-import>Add ${left.length} pieces</button>` : `<a class="btn btn-primary" href="#closet">Go to My Closet</a>`}</div>
+  </section>`;
+}
+
 function viewProfile(){
   const p = state.profile, ht = p.ft ? `${p.ft}′ ${p.in||0}″` : "Not set";
   const radio = (f) => `<fieldset class="size-group"><legend>${f.label}</legend><div class="size-opts">${f.opts.map(o=>{const id=`p-${f.id}-${o.replace(".","_")}`;return `<input type="radio" name="p-${f.id}" id="${id}" value="${o}" ${p[f.id]===o?"checked":""}><label for="${id}">${o}</label>`;}).join("")}</div></fieldset>`;
@@ -893,8 +1009,9 @@ function viewProfile(){
             <div class="field"><label for="p-in">Inches</label><select id="p-in"><option value="">–</option>${Array.from({length:12},(_,i)=>`<option ${p.in!==undefined&&p.in!==""&&String(p.in)===String(i)?"selected":""}>${i}</option>`).join("")}</select></div>
           </div>
         </fieldset>
+        ${cloud ? `<div class="field" style="max-width:320px"><label for="p-name">Your name</label><input id="p-name" value="${esc(ME.name)}" required></div>` : ""}
         ${PROFILE_FIELDS.map(radio).join("")}
-        <div><button class="btn btn-primary" type="submit" id="profileSave">Save profile</button></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" type="submit" id="profileSave">Save profile</button>${cloud ? `<button class="btn btn-ghost" type="button" data-signout>Sign out</button>` : ""}</div>
       </form>
     </div>
   </section>`;
@@ -971,14 +1088,26 @@ const store = {
     applyDoc(col, id, data); render();
     return true;
   },
-  async addItem(it){ await this.setDoc("items", it.id, it); },
-  async addRequest(r){ await this.setDoc("requests", r.id, r); },
+  async addItem(it){ if (cloud) return cloudDo(sb.from("items").insert(toRow(it))); await this.setDoc("items", it.id, it); },
+  async addRequest(r){
+    if (cloud) return cloudDo(sb.from("requests").insert({ item_id:r.itemId, owner:itemById(r.itemId).ownerId, start_date:r.start, note:r.note }), "Couldn’t send that request. Try again.");
+    await this.setDoc("requests", r.id, r);
+  },
   async setStatus(x, status){
+    if (cloud) return cloudDo(sb.from("requests").update({ status }).eq("id", x.id));
     if (x.id.startsWith("x")) await this.setDoc("exState", x.id, { status });
     else { const { id, ...r } = { ...state.requests.find(q=>q.id===x.id), status }; await this.setDoc("requests", x.id, r); }
   },
-  async setProfile(p){ await this.setDoc("profile", "me", p); },
-  async setPref(id, patch){ const next = { ...(state.prefs[id]||{}), ...patch }; delete next.id; await this.setDoc("prefs", id, next); },
+  async setProfile(p, name){
+    if (cloud) return cloudDo(sb.from("profiles").update(name ? { sizes:p, name } : { sizes:p }).eq("id", ME.id));
+    await this.setDoc("profile", "me", p);
+  },
+  async setPref(id, patch){
+    if (cloud){
+      const row = {}; const keys = { name:"name", description:"description", color:"color", size:"size", category:"category", available:"available", removed:"removed" };
+      for (const [k, col] of Object.entries(keys)) if (k in patch) row[col] = patch[k];
+      return cloudDo(sb.from("items").update(row).eq("id", id));
+    } const next = { ...(state.prefs[id]||{}), ...patch }; delete next.id; await this.setDoc("prefs", id, next); },
   async setAvail(id, available){ return this.setPref(id, { available }); }
 };
 
@@ -1069,7 +1198,7 @@ async function autofill(){
     }
   } catch(e){
     const code = e?.code;
-    a.error = code==="offline" ? "Auto-fill needs the Closet Swap server. Fill in the details yourself, or run the app with npm start."
+    a.error = code==="offline" ? "Auto-fill isn’t turned on for the live site yet. Fill in the details yourself."
       : e?.message || "The assistant couldn’t read this photo. Try again, or fill in the details yourself.";
   }
   a.busy = false; render();
@@ -1082,7 +1211,12 @@ async function saveNew(){
   const blob = await croppedBlob();
   const dataUrl = await blobToDataUrl(blob);
   let img = dataUrl;
-  if (online){ try { img = (await api("upload", { method:"POST", body:JSON.stringify({ dataUrl }) })).url; } catch(e){ toast(e.message); btn.disabled = false; btn.textContent = "Add to My Closet"; return; } }
+  if (cloud){
+    const path = `${ME.id}/${crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + uid()}.jpg`;
+    const { error } = await sb.storage.from("closet-photos").upload(path, blob, { contentType:"image/jpeg" });
+    if (error){ console.error(error); toast("Couldn’t upload that photo. Try again."); btn.disabled = false; btn.textContent = "Add to My Closet"; return; }
+    img = sb.storage.from("closet-photos").getPublicUrl(path).data.publicUrl;
+  } else if (online){ try { img = (await api("upload", { method:"POST", body:JSON.stringify({ dataUrl }) })).url; } catch(e){ toast(e.message); btn.disabled = false; btn.textContent = "Add to My Closet"; return; } }
   const it = { id:"a"+uid(), name:v("#f-name")||"Untitled piece", description:v("#f-desc"), color:v("#f-color"), size:$("#f-size").value,
     category:$("#f-cat").value, colorHex:a.label?.colorHex||"", img, available:true, createdAt:new Date().toISOString() };
   await store.addItem(it);
@@ -1090,18 +1224,19 @@ async function saveNew(){
   state.add = { phase:"empty", blob:null, preview:null, label:{}, error:null, busy:false, img:null, iw:0, ih:0, zoom:1, fx:.5, fy:.5 };
   state.myCat = "All";
   location.hash = "#closet";
-  toast(online ? `Added “${it.name}” to your closet` : `Added “${it.name}”. It’s saved in this browser only.`);
+  toast(cloud || online ? `Added “${it.name}” to your closet` : `Added “${it.name}”. It’s saved in this browser only.`);
 }
 
 /* ============ Render & routing ============ */
-const ROUTES = { home:viewHome, friends:viewFriends, closet:viewCloset, swaps:viewSwaps, add:viewAdd, profile:viewProfile, wishlist:viewWishlist };
+const ROUTES = { home:viewHome, friends:viewFriends, closet:viewCloset, swaps:viewSwaps, add:viewAdd, profile:viewProfile, wishlist:viewWishlist, signin:viewSignin, "import-starter":viewImport };
 function route(){ const r = location.hash.replace("#",""); return ROUTES[r] ? r : "home"; }
 let lastRoute = null;
 function render(){
   const r = route();
   const focusId = document.activeElement?.id, caret = document.activeElement?.selectionStart;
   renderTabs(r);
-  $("#app").innerHTML = ROUTES[r]();
+  const demoBar = state.cloudReady && !cloud && r !== "signin" ? `<div class="demo-bar"><span><b>You’re looking at a demo closet.</b> Sign in to start your own and borrow from friends.</span><a class="btn btn-primary btn-sm" href="#signin">Sign in</a></div>` : "";
+  $("#app").innerHTML = demoBar + ROUTES[r]();
   if (focusId && $("#"+focusId) && r===lastRoute){ const el = $("#"+focusId); el.focus(); try { if (caret!=null) el.setSelectionRange(caret, caret); } catch(e){} }
   if (r==="add") layoutCrop();
   if (r !== lastRoute) window.scrollTo(0,0);
@@ -1119,6 +1254,17 @@ document.addEventListener("click", async e => {
   const ed = t.closest("[data-edit]"); if (ed){ const f = $("#editForm"); f.hidden = !f.hidden; if (!f.hidden) $("#e-name").focus(); return; }
   if (t.closest("[data-remove]")){ $("#rmConfirm").hidden = false; return; }
   const ry = t.closest("[data-remove-yes]"); if (ry){ const it = itemById(ry.dataset.removeYes); await store.setPref(ry.dataset.removeYes, { removed:true }); closeModal(); render(); toast(`Removed “${it?.name}”`); return; }
+  const am = t.closest("[data-authmode]"); if (am){ state.authMode = am.dataset.authmode; state.authMsg = ""; render(); return; }
+  if (t.closest("[data-signout]")){ await sb.auth.signOut(); return; }
+  const cp = t.closest("[data-copy]"); if (cp){ try { await navigator.clipboard.writeText(cp.dataset.copy); toast("Link copied"); } catch(_) { toast("Select the link above and copy it."); } return; }
+  const imp = t.closest("[data-import]");
+  if (imp){
+    imp.disabled = true; imp.textContent = "Adding…";
+    const have = new Set(allMine().map(i => i.name));
+    const rows = MY_ITEMS.filter(i => !have.has(i.name)).reverse().map(i => toRow({ ...i, img:new URL(i.img, document.baseURI).href }));
+    if (await cloudDo(sb.from("items").insert(rows), "Couldn’t add the starter closet. Try again.")){ toast(`Added ${rows.length} pieces`); location.hash = "#closet"; }
+    return;
+  }
   const fr = t.closest("[data-friend]"); if (fr){ state.friendFilter = fr.dataset.friend || null; render(); return; }
   const cat = t.closest("[data-cat]"); if (cat){ state.catFilter = cat.dataset.cat; render(); return; }
   if (t.closest("[data-clear]")){ state.fSize = ""; state.fColor = ""; render(); return; }
@@ -1161,6 +1307,16 @@ document.addEventListener("change", async e => {
 });
 document.addEventListener("submit", async e => {
   e.preventDefault();
+  if (e.target.id==="authForm"){
+    const up = state.authMode === "signup", email = $("#a-email").value.trim(), password = $("#a-pass").value;
+    state.authEmail = email;
+    const btn = $("#authBtn"); btn.disabled = true; btn.textContent = up ? "Creating…" : "Signing in…";
+    const res = up ? await sb.auth.signUp({ email, password, options:{ data:{ name:$("#a-name").value.trim() }, emailRedirectTo:SITE } })
+                   : await sb.auth.signInWithPassword({ email, password });
+    if (res.error){ state.authMsg = res.error.message; render(); return; }
+    if (up && !res.data.session){ state.authMsg = "Check your email for a link to confirm your account, then sign in."; state.authMode = "signin"; render(); return; }
+    return;
+  }
   if (e.target.id==="addForm"){ syncLabelFromForm(); saveNew(); }
   if (e.target.id==="editForm"){
     const id = e.target.dataset.item;
@@ -1171,7 +1327,7 @@ document.addEventListener("submit", async e => {
     const g = n => e.target.querySelector(`input[name="p-${n}"]:checked`)?.value || "";
     const p = { ft:$("#p-ft").value, in:$("#p-in").value };
     PROFILE_FIELDS.forEach(f => p[f.id] = g(f.id));
-    await store.setProfile(p); toast("Profile saved"); render();
+    await store.setProfile(p, cloud ? ($("#p-name")?.value.trim() || ME.name) : undefined); toast("Profile saved"); render();
   }
   if (e.target.id==="reqForm"){
     const id = e.target.dataset.item, it = itemById(id), start = $("#r-start").value;
@@ -1184,7 +1340,7 @@ document.addEventListener("submit", async e => {
 
 /* ============ Boot ============ */
 render();
-connect();
+connect().then(initCloud);
 </script>
 
 </body>
