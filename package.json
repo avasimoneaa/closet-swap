@@ -1,0 +1,14 @@
+{
+  "name": "closet-swap",
+  "version": "1.0.0",
+  "description": "Closet Swap: borrow from friends, lend your favorites, and discover new pieces in one shared closet.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning server/server.js",
+    "dev": "node --no-warnings=ExperimentalWarning --watch server/server.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
