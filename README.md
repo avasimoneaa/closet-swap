@@ -100,7 +100,7 @@ Pieces you add, swaps, your profile and your wishlist are saved in `data/closet.
 
 ## Online database and sign-in (Supabase)
 
-The live site can use [Supabase](https://supabase.com) for accounts, the database and photo storage, with no server needed. Signed in, your pieces, swaps, profile and wishlist save online, and anyone else who signs up shows up in your Friends' Closets. Signed out, visitors see the demo closet.
+The live site uses [Supabase](https://supabase.com) for accounts, the database and photo storage, with no server needed. Signed in, your pieces, swaps, profile and wishlist save online, and anyone else who signs up shows up in your Friends' Closets. Signed out, visitors see the demo closet.
 
 1. Create a free Supabase project.
 2. Open **SQL Editor → New query**, paste in [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. This creates the tables, the security rules and the `closet-photos` storage bucket.
@@ -110,9 +110,9 @@ The live site can use [Supabase](https://supabase.com) for accounts, the databas
 
 The anon key is meant to be public. The security rules keep closets visible only to signed-in people and let each person change only their own pieces, profile and wishlist. Never put the `service_role` key in this repo.
 
-## Demo mode (GitHub Pages)
+## Demo mode
 
-If you open the frontend without the server, for example on GitHub Pages, it runs in demo mode. Everything works except AI auto-fill, and changes are saved in that browser only. To publish the demo, go to **Settings → Pages**, choose **Deploy from a branch**, pick **main**, and save.
+If you open the frontend with no Supabase settings in `config.js` and no server running, it runs in demo mode. Everything works except AI auto-fill, and changes are saved in that browser only. To publish the demo, go to **Settings → Pages**, choose **Deploy from a branch**, pick **main**, and save.
 
 ## Putting it online for real
 
@@ -124,8 +124,9 @@ GitHub Pages can't run the server. To share the full app, deploy this folder to 
 
 ## Good to know
 
-- **No sign-in yet.** The server is one shared closet with no login, so only run it for yourself or people you trust.
-- **Sample friends.** The friends' closets are illustrated samples until friends can sign up and add their own pieces.
+- **Accounts are live.** Anyone can sign up on the live site. Signed in, Friends' Closets shows everyone else who has an account; signed out, you see the demo closet with illustrated sample friends.
+- **The local server has no sign-in.** Run that way, it's one shared closet, so only use it for yourself or people you trust.
+- **AI auto-fill runs on the local server only.** On the live site you fill in the details yourself.
 
 ## License
 
