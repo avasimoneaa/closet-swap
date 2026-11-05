@@ -6,7 +6,7 @@ Closet Swap is a wardrobe-sharing app for friends. Browse each other's closets, 
 
 **[Open the live app →](https://avasimoneaa.github.io/closet-swap/)** · **[See the landing page →](https://shiny-behaviors-053847.framer.app)**
 
-![Closet Swap on desktop and phone: the My Closet grid and the Add a Piece screen with AI auto-fill](docs/screenshots/hero.jpg)
+![Closet Swap on desktop and phone: the My Closet grid and the Add a Piece screen with AI auto-fill](docs/screenshots/hero.jpg?v=2)
 
 ## Why I built it
 
