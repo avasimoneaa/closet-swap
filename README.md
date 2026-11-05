@@ -77,3 +77,7 @@ GitHub Pages can't run the server. To share the full app, deploy this folder to 
 
 - **Accounts and sign-in.** Right now the server is a single shared closet with no login, so only run it for yourself or people you trust.
 - **Real friends' closets.** The friends shown are sample closets until friends can sign up and add their own pieces.
+
+## License
+
+The code is released under the [MIT License](LICENSE). The photos in `public/img/` are personal and not included in that license; all rights reserved.
