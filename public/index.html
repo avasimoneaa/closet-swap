@@ -649,7 +649,7 @@ function refineBar(base, shown){
 
 /* ============ Media renderers ============ */
 function media(it, cls=""){
-  if (it.img) return `<img src="${esc(it.img)}" alt="${esc(it.name)}" loading="lazy">`;
+  if (it.img) return `<img src="${esc(it.img)}" alt="${esc(it.name)}" decoding="async">`;
   return `<div class="swatch ${it.h||"h1"} ${cls}"><div class="garment sh-${it.shape} pat-${it.pat}" style="--c1:${it.c1};--c2:${it.c2}"></div></div>`;
 }
 function itemStatus(it){
