@@ -76,7 +76,7 @@ h1,h2,h3{font-family:var(--display);font-weight:400;text-wrap:balance;margin:0;l
 
 /* ---------- Generic sections ---------- */
 main{padding-block:28px 80px}
-.view{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+#app.enter .view{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
 @keyframes rise{from{transform:translateY(8px)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .sec{margin-top:72px}
@@ -490,8 +490,12 @@ const FRIEND_ITEMS = [
   { id:"f12", owner:"jordan", name:"Striped Button-Down", category:"Tops", color:"Sky blue", size:"M", shape:"top", pat:"stripe", c1:"#8FC1EC", c2:"#FFFFFF", h:"h1", description:"Oversized and crisp. Wear it open over anything." }
 ];
 
-// Example exchanges to show the flow
+// Example exchanges to show the flow. Upcoming dates are counted from today so the demo never looks out of date.
+function daysFromNow(n){ const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 const SEED_EX = [
+  { id:"x3", type:"lend", itemId:"m14", other:"maya", start:daysFromNow(2), status:"pending", note:"Can I wear this to the date party Friday? I’ll have it back Sunday!" },
+  { id:"x4", type:"lend", itemId:"m18", other:"jordan", start:daysFromNow(5), status:"pending", note:"Need these for game day 🐊" },
+  { id:"x8", type:"borrow", itemId:"f5", other:"sofia", start:daysFromNow(4), status:"requested", note:"For my birthday dinner, will dry clean!" },
   { id:"x1", type:"borrow", itemId:"f7",  other:"lila",   start:"2026-11-01", end:"2026-11-08", status:"active" },
   { id:"x2", type:"borrow", itemId:"f10", other:"jordan", start:"2026-11-03", end:"2026-11-13", status:"active" },
   { id:"x5", type:"lend", itemId:"m1", other:"sofia", start:"2026-10-30", status:"active" },
@@ -523,7 +527,7 @@ const state = {
   overrides: {},     // status changes to example exchanges (db: exState)
   prefs: {},         // availability toggles (db: prefs)
   profile: {},       // height + sizes (db: profile/me)
-  saved: new Set(),
+  saved: new Set(["f1","f9","f12"]), // a few hearted pieces so the demo wishlist isn’t empty
   friendFilter: null, catFilter: "All", myCat: "All", query: "", fSize:"", fColor:"", fSort:"recent",
   add: { phase:"empty", blob:null, preview:null, label:{}, error:null, busy:false, img:null, iw:0, ih:0, zoom:1, fx:.5, fy:.5 }
 };
@@ -729,8 +733,16 @@ function refineBar(base, shown){
 }
 
 /* ============ Media renderers ============ */
+// Each photo's real width and height, so the grid saves the right space before it loads and doesn't reshuffle as photos appear.
+const IMG_SIZES = {"beaded-tube-top.jpg":[472,439],"black-halter-tank.jpg":[335,476],"black-knee-boots.jpg":[380,583],"black-tube-top.jpg":[261,220],"blue-floral-midi.jpg":[409,968],"cognac-cowboy-boots.jpg":[314,361],"coral-twist-mini.jpg":[680,1026],"embroidered-strapless-mini.jpg":[472,538],"florida-shorts.jpg":[425,477],"fringe-off-shoulder-top.jpg":[670,565],"gold-sequin-skirt.jpg":[271,666],"grey-blazer.jpg":[577,761],"lace-flare-pants.jpg":[670,1314],"lace-mini.jpg":[644,785],"leather-shorts.jpg":[446,269],"leopard-pants.jpg":[305,775],"light-wash-jeans.jpg":[555,622],"metallic-halter.jpg":[800,847],"orchid-halter-mini.jpg":[580,1211],"patent-loafers.jpg":[289,268],"satin-print-skirt.jpg":[243,625],"sequin-fringe-mini.jpg":[564,917],"white-halter-wrap.jpg":[800,775],"white-peplum-top.jpg":[800,837]};
+function imgSize(src){
+  const file = String(src).split("?")[0].split("/").pop();
+  if (IMG_SIZES[file]) return IMG_SIZES[file];
+  if (/closet-photos|\/uploads\//.test(src)) return [960,1200]; // the Add a Piece crop always saves 960 by 1200
+  return null;
+}
 function media(it, cls=""){
-  if (it.img) return `<img src="${esc(it.img)}" alt="${esc(it.name)}" decoding="async">`;
+  if (it.img){ const d = imgSize(it.img); return `<img src="${esc(it.img)}" alt="${esc(it.name)}" decoding="async"${d ? ` width="${d[0]}" height="${d[1]}"` : ""}>`; }
   return `<div class="swatch ${it.h||"h1"} ${cls}"><div class="garment sh-${it.shape} pat-${it.pat}" style="--c1:${it.c1};--c2:${it.c2}"></div></div>`;
 }
 function itemStatus(it){
@@ -1236,10 +1248,16 @@ function render(){
   const focusId = document.activeElement?.id, caret = document.activeElement?.selectionStart;
   renderTabs(r);
   const demoBar = state.cloudReady && !cloud && r !== "signin" ? `<div class="demo-bar"><span><b>You’re looking at a demo closet.</b> Sign in to start your own and borrow from friends.</span><a class="btn btn-primary btn-sm" href="#signin">Sign in</a></div>` : "";
-  $("#app").innerHTML = demoBar + ROUTES[r]();
-  if (focusId && $("#"+focusId) && r===lastRoute){ const el = $("#"+focusId); el.focus(); try { if (caret!=null) el.setSelectionRange(caret, caret); } catch(e){} }
+  // Same page: keep the scroll position and skip the entrance animation, so filters, hearts and search don't make the page jump.
+  // New page: start at the top and play the entrance animation once.
+  const app = $("#app"), samePage = r === lastRoute, y = window.scrollY;
+  if (samePage) app.style.minHeight = app.offsetHeight + "px";
+  app.classList.toggle("enter", !samePage);
+  app.innerHTML = demoBar + ROUTES[r]();
+  if (focusId && $("#"+focusId) && samePage){ const el = $("#"+focusId); el.focus({ preventScroll:true }); try { if (caret!=null) el.setSelectionRange(caret, caret); } catch(e){} }
   if (r==="add") layoutCrop();
-  if (r !== lastRoute) window.scrollTo(0,0);
+  if (samePage){ app.style.minHeight = ""; window.scrollTo(0, Math.min(y, document.documentElement.scrollHeight - window.innerHeight)); }
+  else window.scrollTo(0,0);
   lastRoute = r;
 }
 window.addEventListener("hashchange", () => { closeModal(); render(); });
