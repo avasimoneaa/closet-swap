@@ -1,5 +1,12 @@
-     {
-       "name": "closet-swap",
-       "compatibility_date": "2026-11-01",
-       "assets": { "directory": "./public" }
-     }
+{
+  "name": "closet-swap",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  // Public values (the same ones in public/config.js). The Anthropic key is a secret set in the Cloudflare dashboard.
+  "vars": {
+    "SUPABASE_URL": "https://vilplawyxdikchdykrhb.supabase.co",
+    "SUPABASE_ANON_KEY": "sb_publishable_eLLUcUf_sV6gvuyU68he4w_F6Vh0sXi"
+  }
+}

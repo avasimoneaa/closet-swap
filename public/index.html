@@ -1198,8 +1198,10 @@ async function autofill(){
   syncLabelFromForm();
   a.busy = true; a.error = null; render();
   try {
-    if (!online) throw { code:"offline" };
-    const out = await api("label", { method:"POST", body:JSON.stringify({ image: await blobToDataUrl(await croppedBlob()) }) });
+    if (!online && !cloud) throw { code:"offline" };
+    const headers = { "content-type":"application/json" };
+    if (cloud){ const { data } = await sb.auth.getSession(); if (data.session) headers.authorization = "Bearer " + data.session.access_token; }
+    const out = await api("label", { method:"POST", headers, body:JSON.stringify({ image: await blobToDataUrl(await croppedBlob()) }) });
     if (!out || typeof out !== "object") throw { code:"bad" };
     if (!out.name) a.error = "I couldn’t find a clothing item in this photo. Try repositioning it, or fill in the details yourself.";
     else {
@@ -1210,7 +1212,8 @@ async function autofill(){
     }
   } catch(e){
     const code = e?.code;
-    a.error = code==="offline" ? "Auto-fill isn’t turned on for the live site yet. Fill in the details yourself."
+    a.error = code==="offline" ? "Sign in to use AI auto-fill, or fill in the details yourself."
+      : (e?.status===404 || e?.status===405) ? "AI auto-fill isn’t available on this copy of the site. Fill in the details yourself."
       : e?.message || "The assistant couldn’t read this photo. Try again, or fill in the details yourself.";
   }
   a.busy = false; render();

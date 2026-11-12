@@ -110,6 +110,10 @@ The live site uses [Supabase](https://supabase.com) for accounts, the database a
 
 The anon key is meant to be public. The security rules keep closets visible only to signed-in people and let each person change only their own pieces, profile and wishlist. Never put the `service_role` key in this repo.
 
+## Deploy on Cloudflare Workers
+
+`wrangler.jsonc` serves the `public` folder and runs `worker/index.js` for AI auto-fill. Connect the repo in **Workers & Pages**, then add `ANTHROPIC_API_KEY` under **Settings → Variables and Secrets** as a secret, and add the `workers.dev` URL to Supabase's **Redirect URLs**.
+
 ## Demo mode
 
 If you open the frontend with no Supabase settings in `config.js` and no server running, it runs in demo mode. Everything works except AI auto-fill, and changes are saved in that browser only. To publish the demo, go to **Settings → Pages**, choose **Deploy from a branch**, pick **main**, and save.
@@ -126,7 +130,7 @@ GitHub Pages can't run the server. To share the full app, deploy this folder to 
 
 - **Accounts are live.** Anyone can sign up on the live site. Signed in, Friends' Closets shows everyone else who has an account; signed out, you see the demo closet with illustrated sample friends.
 - **The local server has no sign-in.** Run that way, it's one shared closet, so only use it for yourself or people you trust.
-- **AI auto-fill runs on the local server only.** On the live site you fill in the details yourself.
+- **AI auto-fill runs on the Cloudflare version and the local server.** On Cloudflare, a Worker (`worker/index.js`) handles `/api/label` for signed-in users only, using an `ANTHROPIC_API_KEY` secret set in the Cloudflare dashboard. The GitHub Pages copy has no backend, so there you fill in the details yourself.
 
 ## License
 
